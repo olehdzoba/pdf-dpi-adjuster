@@ -1,0 +1,109 @@
+import argparse, os, shutil, tempfile, time
+
+from PIL import Image
+import fitz
+import img2pdf 
+
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+handled_files = []
+
+
+def extract_picture(pdf_path, out_path):
+    pdf_document = fitz.open(pdf_path)
+
+    if pdf_document.page_count > 1:
+        raise Exception("Unexpected number of pages in PDF: ", pdf_document.page_count)
+
+    page = pdf_document.load_page(0)
+
+    pix = page.get_pixmap()
+    pix.save(out_path)
+
+    pdf_document.close()
+
+
+def change_dpi(img_path, out_path, dpi):
+    img = Image.open(img_path)
+
+    img.info["dpi"] = dpi
+    
+    img.save(out_path, dpi=dpi) 
+
+
+def img_to_pdf(img_path, out_path):
+    with open(out_path,"wb") as f:
+	    f.write(img2pdf.convert(img_path))
+
+
+def fix_pdf(original_pdf):
+    start = time.perf_counter()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Moving original file to temporary directory while it is being manipulated
+        moved_pdf = f"{tmpdir}/{os.path.basename(original_pdf)}"
+        shutil.move(original_pdf, moved_pdf)
+        
+        scan_img = f"{tmpdir}/_scan.png"
+        scan_img300 = f"{tmpdir}/_scan300.png"
+    
+        extract_picture(moved_pdf, scan_img)
+        change_dpi(scan_img, scan_img300, (300, 300))
+        img_to_pdf(scan_img300, original_pdf)
+
+    end = time.perf_counter()
+    print(f"{original_pdf}: {round(end - start, 2)}")
+
+
+class Watcher(FileSystemEventHandler):
+    def __init__(self, folder):
+        super().__init__()
+        self.folder = folder
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        
+        if event.src_path in handled_files:
+            handled_files.remove(event.src_path)
+            return
+        
+        if event.src_path.endswith(".pdf"):
+            # Required so that the watcher does not react to the processed file
+            handled_files.append(event.src_path)
+
+            fix_pdf(event.src_path)
+        
+
+def watch_folder(folder):
+    event_handler = Watcher(folder)
+    observer = Observer()
+
+    observer.schedule(event_handler, folder, recursive=False)
+    observer.start()
+    try:
+        while True:
+            time.sleep(1)
+    finally:
+        observer.stop()
+        observer.join()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="A CLI tool that sets resolution of the scan within PDF to 300x300ppi.")
+    subparsers = parser.add_subparsers(title="Commands", dest="command")
+
+    fix_parser = subparsers.add_parser("fix", help="Fix resolution of a specific file.")
+    fix_parser.add_argument("filename", help="Path to the file to fix.")
+
+    watch_parser = subparsers.add_parser("watch", help="Watch a specific directory and fix all files there.")
+    watch_parser.add_argument("dirname", help="Path to the directory to watch.")
+
+    args = parser.parse_args()
+
+    if args.command == "fix":
+        fix_pdf(args.filename)
+    
+    if args.command == "watch":
+        watch_folder(args.dirname)
