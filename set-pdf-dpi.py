@@ -1,4 +1,5 @@
-import argparse, os, shutil, tempfile, time
+import argparse, sys, os, shutil, tempfile, time
+from datetime import datetime
 
 from PIL import Image
 import fitz
@@ -8,6 +9,11 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 handled_files = []
+
+def append_log(line, level="INFO"):
+    logfile = os.path.basename(__file__, ".log")
+    with open(logfile, "a") as f:
+        f.write(f"{level}-{datetime.now()}: {line}")
 
 
 def extract_picture(pdf_path, out_path):
@@ -55,10 +61,10 @@ def fix_pdf(original_pdf, dpi):
             img_to_pdf(scan_img300, original_pdf)
         
             end = time.perf_counter()
-            print(f"Fixed {original_pdf}: {round(end - start, 2)}s")
+            append_log(f"Fixed {original_pdf}: {round(end - start, 2)}s")
 
     except Exception as e:
-        print(f"Skipped file {original_pdf} due to exception: {e}")
+        append_log(f"Skipped file {original_pdf} due to exception: {e}")
 
 
 class Watcher(FileSystemEventHandler):
@@ -110,8 +116,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     dpi = tuple(map(int, (args.dpi if args.dpi else "300,300").split(',')))
     
-    if args.command == "fix":
-        fix_pdf(args.filename, dpi)
+    try:
+        if args.command == "fix":
+            fix_pdf(args.filename, dpi)
+        
+        if args.command == "watch":
+            watch_folder(args.dirname, dpi)
+    except KeyboardInterrupt:
+        sys.exit()
+    except Exception as e:
+        append_log(str(e), level="ERROR")
     
-    if args.command == "watch":
-        watch_folder(args.dirname, dpi)
