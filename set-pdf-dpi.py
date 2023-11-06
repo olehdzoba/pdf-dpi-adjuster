@@ -13,35 +13,43 @@ handled_files = []
 def append_log(line, level="INFO"):
     logfile = os.path.join(os.path.dirname(__file__), ".log")
     with open(logfile, "a") as f:
-        f.write(f"{level}-{datetime.now()}: {line}")
+        f.write(f"{level}-{datetime.now()}: {line}\n")
 
 
 def extract_picture(pdf_path, out_path):
-    pdf_document = fitz.open(pdf_path)
+    with fitz.open(pdf_path) as pdf_document:
+        if pdf_document.page_count > 1:
+            raise Exception("Unexpected number of pages in PDF: ", pdf_document.page_count)
 
-    if pdf_document.page_count > 1:
-        raise Exception("Unexpected number of pages in PDF: ", pdf_document.page_count)
+        page = pdf_document.load_page(0)
 
-    page = pdf_document.load_page(0)
-
-    # !! This way of extracting image does not preserve DPI of the image and always gives 96x96ppi
-    pix = page.get_pixmap()
-    pix.save(out_path)
-
-    pdf_document.close()
+        # !! This way of extracting image does not preserve DPI of the image and always gives 96x96ppi
+        pix = page.get_pixmap()
+        pix.save(out_path)
 
 
 def change_dpi(img_path, out_path, dpi):
-    img = Image.open(img_path)
-
-    img.info["dpi"] = dpi
-    
-    img.save(out_path, dpi=dpi) 
+    with Image.open(img_path) as img:
+        img.info["dpi"] = dpi
+        
+        img.save(out_path, dpi=dpi) 
 
 
 def img_to_pdf(img_path, out_path):
     with open(out_path,"wb") as f:
 	    f.write(img2pdf.convert(img_path))
+
+
+def retry_move(src, dest):
+    retries = 0
+    while retries < 5:
+        try: 
+            shutil.move(src, dest)
+            break
+        except PermissionError:
+            retries += 1
+        except Exception as e: 
+            raise e
 
 
 def fix_pdf(original_pdf, dpi):
@@ -51,7 +59,7 @@ def fix_pdf(original_pdf, dpi):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Moving original file to temporary directory while it is being manipulated
             moved_pdf = f"{tmpdir}/{os.path.basename(original_pdf)}"
-            shutil.move(original_pdf, moved_pdf)
+            retry_move(original_pdf, moved_pdf)
             
             scan_img = f"{tmpdir}/_scan.png"
             scan_img300 = f"{tmpdir}/_scan300.png"
@@ -64,7 +72,7 @@ def fix_pdf(original_pdf, dpi):
             append_log(f"Fixed {original_pdf}: {round(end - start, 2)}s")
 
     except Exception as e:
-        append_log(f"Skipped file {original_pdf} due to exception: {e}")
+        append_log(f"Skipped file {original_pdf} due to exception: {e}", level="ERROR")
 
 
 class Watcher(FileSystemEventHandler):
