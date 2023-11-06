@@ -1,2 +1,7 @@
+scanned/
 /**/*.pdf
+
+.log
 startup.vbs
+runner.bat
+

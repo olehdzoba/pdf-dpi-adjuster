@@ -1,2 +1,0 @@
-' Put this in your start up folder if you want to watch for a specific folder all the time
-CreateObject("WScript.Shell").Run "'[path to python.exe]' '[path to set-pdf-dpi.py]' watch '[path to folder]'", 0, True

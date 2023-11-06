@@ -1,0 +1,1 @@
+python ./set-pdf-dpi.py watch "[full path to the folder you want to watch]"
