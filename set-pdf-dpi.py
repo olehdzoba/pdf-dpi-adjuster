@@ -76,6 +76,26 @@ def fix_pdf(original_pdf, dpi):
         append_log(f"Skipped file {original_pdf} due to exception: {e}", level="ERROR")
 
 
+class CleanWatcher(FileSystemEventHandler):
+    def __init__(self, dpi):
+        super().__init__()
+        self.dpi = dpi
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        
+        if event.src_path in recently_proccessed:
+            recently_proccessed.remove(event.src_path)
+            return
+        
+        if event.src_path.endswith(".pdf"):
+            # Required so that the watcher does not react to the processed file
+            recently_proccessed.append(event.src_path)
+
+            fix_pdf(event.src_path, self.dpi)
+
+
 class WindowsScanWatcher(FileSystemEventHandler):
     def __init__(self, dpi):
         super().__init__()
@@ -117,8 +137,8 @@ class WindowsScanWatcher(FileSystemEventHandler):
             recently_created.remove(event.src_path)
 
 
-def watch_folder(folder, dpi):
-    event_handler = WindowsScanWatcher(dpi)
+def watch_folder(folder, dpi, winscan=False):
+    event_handler = WindowsScanWatcher(dpi) if winscan else CleanWatcher(dpi) 
     observer = Observer()
 
     observer.schedule(event_handler, folder, recursive=False)
@@ -141,7 +161,8 @@ if __name__ == "__main__":
 
     watch_parser = subparsers.add_parser("watch", help="Watch a specific directory and fix all files there.")
     watch_parser.add_argument("dirname", help="Path to the directory to watch.")
-    watch_parser.add_argument("-x", "--dpi", help="DPI value that you want to set for PDF image (e.g 300,300).")
+    watch_parser.add_argument("-d", "--dpi", help="DPI value that you want to set for PDF image (e.g 300,300).")
+    watch_parser.add_argument("-w", "--winscan", help="If you want to make it work for Windows Scan app.", action="store_true")
 
     args = parser.parse_args()
     dpi = tuple(map(int, (args.dpi if args.dpi else "300,300").split(',')))
@@ -151,7 +172,7 @@ if __name__ == "__main__":
             fix_pdf(args.filename, dpi)
         
         if args.command == "watch":
-            watch_folder(args.dirname, dpi)
+            watch_folder(args.dirname, dpi, args.winscan)
     except KeyboardInterrupt:
         sys.exit()
     except Exception as e:
