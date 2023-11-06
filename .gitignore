@@ -4,6 +4,5 @@ scanned/
 
 # Files with sensitive system details (e.g. username)
 .log
-startup.vbs
 runner.bat
 
