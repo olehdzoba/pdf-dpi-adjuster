@@ -1,5 +1,5 @@
 import argparse, sys, os, shutil, tempfile, time
-from datetime import datetime
+from datetime import datetime, date
 
 from PIL import Image
 import fitz
@@ -8,7 +8,8 @@ import img2pdf
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-handled_files = []
+recently_created = []
+recently_proccessed = []
 
 def append_log(line, level="INFO"):
     logfile = os.path.join(os.path.dirname(__file__), ".log")
@@ -75,28 +76,49 @@ def fix_pdf(original_pdf, dpi):
         append_log(f"Skipped file {original_pdf} due to exception: {e}", level="ERROR")
 
 
-class Watcher(FileSystemEventHandler):
+class WindowsScanWatcher(FileSystemEventHandler):
     def __init__(self, dpi):
         super().__init__()
         self.dpi = dpi
 
     def on_created(self, event):
+        # Window Scan works weirdly, when scanned it creates a file which ends with today's date and every next 
+        # will be appended with index (e.g. (2), (3), etc.). When it appends an index it renames the file 
+        # thus causing problem with this program
+
         if event.is_directory:
             return
         
-        if event.src_path in handled_files:
-            handled_files.remove(event.src_path)
+        if event.src_path in recently_proccessed:
+            recently_proccessed.remove(event.src_path)    
+            return
+
+        if event.src_path.endswith(".pdf"):
+            # First file will not be renamed so we should process the file immediately
+            if os.path.basename(event.src_path).replace(".pdf", "").endswith(str(date.today()).replace("-", "")):
+                recently_proccessed.append(event.src_path)
+                
+                time.sleep(1)
+                fix_pdf(event.src_path, self.dpi)
+            else:
+                recently_created.append(event.src_path)
+
+        
+    def on_moved(self, event):
+        if event.is_directory:
             return
         
-        if event.src_path.endswith(".pdf"):
-            # Required so that the watcher does not react to the processed file
-            handled_files.append(event.src_path)
+        if event.dest_path.endswith(".pdf") and event.src_path in recently_created:
+            recently_proccessed.append(event.dest_path)
 
-            fix_pdf(event.src_path, self.dpi)
-        
+            time.sleep(1)
+            fix_pdf(event.dest_path, self.dpi)
+
+            recently_created.remove(event.src_path)
+
 
 def watch_folder(folder, dpi):
-    event_handler = Watcher(dpi)
+    event_handler = WindowsScanWatcher(dpi)
     observer = Observer()
 
     observer.schedule(event_handler, folder, recursive=False)
