@@ -1,6 +1,8 @@
+# Folders and files that I used for testing
 scanned/
 /**/*.pdf
 
+# Files with sensitive system details (e.g. username)
 .log
 startup.vbs
 runner.bat
