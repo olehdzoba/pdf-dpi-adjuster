@@ -11,7 +11,7 @@ from watchdog.events import FileSystemEventHandler
 handled_files = []
 
 def append_log(line, level="INFO"):
-    logfile = os.path.basename(__file__, ".log")
+    logfile = os.path.join(os.path.dirname(__file__), ".log")
     with open(logfile, "a") as f:
         f.write(f"{level}-{datetime.now()}: {line}")
 
